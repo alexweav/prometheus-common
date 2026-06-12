@@ -237,6 +237,9 @@ func (u URL) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
+// OAuth2TokenRoundTripperFunc allows extension of an http.RoundTripper.
+type OAuth2TokenRoundTripperFunc func(http.RoundTripper) http.RoundTripper
+
 // OAuth2 is the oauth2 client configuration.
 type OAuth2 struct {
 	ClientID         string `yaml:"client_id,omitempty" json:"client_id,omitempty"`
@@ -276,6 +279,14 @@ type OAuth2 struct {
 	EndpointParams map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
 	TLSConfig      TLSConfig         `yaml:"tls_config,omitempty"`
 	ProxyConfig    `yaml:",inline"`
+
+	tokenRoundTripperFunc OAuth2TokenRoundTripperFunc
+}
+
+// WithTokenRoundTripperFunc allows you to extend the http.RoundTripper used for oauth token endpoint requests.
+func (o *OAuth2) WithTokenRoundTripperFunc(fn OAuth2TokenRoundTripperFunc) *OAuth2 {
+	o.tokenRoundTripperFunc = fn
+	return o
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -1061,6 +1072,9 @@ func (rt *oauth2RoundTripper) newOauth2TokenSource(req *http.Request, clientCred
 			TokenURL:       rt.config.TokenURL,
 			EndpointParams: mapToValues(rt.config.EndpointParams),
 		}
+	}
+	if rt.config.tokenRoundTripperFunc != nil {
+		t = rt.config.tokenRoundTripperFunc(t)
 	}
 	client = &http.Client{Transport: t}
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, client)

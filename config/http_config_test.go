@@ -1958,6 +1958,52 @@ func TestOAuth2UserAgent(t *testing.T) {
 	require.Equalf(t, "Bearer 12345", authorization, "Expected authorization header to be 'Bearer 12345', got '%s'", authorization)
 }
 
+// countingRoundTripper is an arbitrary http.RoundTripper used for tests.
+// It counts the requests that pass to an inner http.RoundTripper.
+type countingRoundTripper struct {
+	next     http.RoundTripper
+	requests int
+}
+
+// RoundTrip implements http.RoundTripper.
+func (rt *countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	rt.requests++
+	return rt.next.RoundTrip(req)
+}
+
+func TestOAuth2TokenRoundTripperFunc(t *testing.T) {
+	ts := newTestOAuthServer(t, func(t testing.TB, auth string) {
+		require.Equal(t, "Basic MToy", auth)
+	})
+	defer ts.close()
+
+	var counter *countingRoundTripper
+	wrap := func(next http.RoundTripper) http.RoundTripper {
+		counter = &countingRoundTripper{next: next}
+		return counter
+	}
+
+	config := DefaultHTTPClientConfig
+	config.OAuth2 = (&OAuth2{
+		ClientID:     "1",
+		ClientSecret: "2",
+		TokenURL:     ts.tokenURL(),
+	}).WithTokenRoundTripperFunc(wrap)
+
+	rt, err := NewRoundTripperFromConfig(config, "test_oauth2")
+	require.NoError(t, err)
+
+	client := http.Client{Transport: rt}
+	resp, err := client.Get(ts.url()) // triggers token fetch through wrapped transport
+	require.NoError(t, err)
+	require.Equal(t, "Bearer 12345", resp.Request.Header.Get("Authorization"))
+	_, err = client.Get(ts.url()) // cached token, no second token request
+	require.NoError(t, err)
+
+	require.NotZerof(t, counter.requests, "wrapper was never invoked; it should decorate the token-endpoint transport")
+	require.Equalf(t, 1, counter.requests, "wrapper was invoked too many times; it should observe only the token-endpoint request")
+}
+
 func TestOAuth2DialContextFunc(t *testing.T) {
 	tokenServerInvoked := false
 	tokenTS := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
