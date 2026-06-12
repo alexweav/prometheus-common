@@ -2000,8 +2000,8 @@ func TestOAuth2TokenRoundTripperFunc(t *testing.T) {
 	_, err = client.Get(ts.url()) // cached token, no second token request
 	require.NoError(t, err)
 
-	require.NotZero(t, counter.requests, "wrapper was never invoked; it should decorate the token-endpoint transport")
-	require.Equal(t, 1, counter.requests, "wrapper was invoked too many times; it should observe only the token-endpoint request")
+	require.NotZerof(t, counter.requests, "wrapper was never invoked; it should decorate the token-endpoint transport")
+	require.Equalf(t, 1, counter.requests, "wrapper was invoked too many times; it should observe only the token-endpoint request")
 }
 
 func TestOAuth2DialContextFunc(t *testing.T) {
